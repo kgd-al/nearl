@@ -10,21 +10,27 @@ from amaze import MazeWidget, Simulation, Maze, Robot
 from abrain import Genome
 from abrain.neat.evolver import NEATEvolver as Evolver, NEATConfig as Config
 from brain import Brain
-from src.amaze.utils import merge_plot
+from utils import merge_trajectories
 
 # str_mazes = ["M9_4x4_U"]
 str_mazes = ["M9_4x4_U", "M5_4x4_U", "M7_4x4_U", "M0_4x4_U"]
 mazes = [m
          for s in str_mazes
-         for m in Maze.from_string(s).all_rotations()[2:3]]
+         for m in Maze.from_string(s).all_rotations()]
 print(mazes)
 robot = Robot.BuildData.from_string("H5")
 print(robot)
 
 
 def _evaluate(genome: Genome, traj: bool, fn: Callable[[Simulation], Any]):
-    for maze in mazes:
-        ann = Brain(genome, robot)
+    ann = Brain(genome, robot)
+    if traj:
+        print("[kgd-debug] remove")
+        _mazes = mazes#[2:3]
+    else:
+        _mazes = mazes
+    for maze in _mazes:
+        ann.reset()
         simulation = Simulation(maze, robot, save_trajectory=traj)
         simulation.run(ann)
         yield fn(simulation)
@@ -39,7 +45,7 @@ def evaluate(genome: Genome):
 
 
 seed = 0
-pop, gen = 100, 10#0
+pop, gen = 100, 10#100
 species = 8
 path = Path("tmp/amaze")
 
@@ -50,7 +56,7 @@ logging.basicConfig(level=logging.INFO)
 rng = random.Random(seed)
 config = Config(
     seed=seed,
-    threads=4,
+    threads=1,#4,
     log_dir=path,
     log_level=4,
     population_size=pop,
@@ -74,7 +80,7 @@ evolver = Evolver(config,
 
 
 def trajectory():
-    merge_plot(
+    merge_trajectories(
         list(_evaluate(evolver.champion.genome, True,
              lambda s: MazeWidget.plot_trajectory(s, 500))),
         path.joinpath(f"trajectory{evolver.generation:0{gen_digits}d}.png"))

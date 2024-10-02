@@ -6,25 +6,37 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QImage, QPainter
 
 
-def merge_plot(images: List[QImage], path: Path):
+def merge_trajectories(images: List[QImage], path: Path):
+    n = len(images)
+    if (n % 4) == 0:  # Assume we have all rotations (sequentially)
+        images = [_merge(images[i:i+4]) for i in range(0, n, 4)]
+        big_img = _merge(images, spacing=10)
+    else:
+        big_img = _merge(images)
+    big_img.save(str(path))
+
+    # for i, img in enumerate(images):
+    #     img.save(str(path.with_suffix(f".{i}.png")))
+
+
+def _merge(images: List[QImage], spacing=0) -> QImage:
     nc = math.ceil(math.sqrt(len(images)))
     nr = math.ceil(len(images) / nc)
 
     ref = images[0]
     w, h = ref.width(), ref.height()
 
-    big_img = QImage(nc * w, nr * h, ref.format())
-    big_img.fill(Qt.yellow)
+    big_img = QImage(nc * w + (nc - 1) * spacing,
+                     nr * h + (nr - 1) * spacing,
+                     QImage.Format_ARGB32)
+    big_img.fill(Qt.transparent)
     painter = QPainter(big_img)
 
-    print(f"{nc=} {nr=}")
-    print([img.size() for img in images])
-    print(f"{big_img.size()}")
     for ix, img in enumerate(images):
-        x = w * (ix % nc)
-        y = h * (ix // nc)
-        print(ix, x, y)
+        i, j = ix % nc, ix // nc
+        x, y = i * (w + spacing), j * (h + spacing)
         painter.drawImage(x, y, img)
 
     painter.end()
-    big_img.save(str(path))
+
+    return big_img
