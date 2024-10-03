@@ -1,6 +1,8 @@
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 
 import numpy as np
+from abrain.core.ann import ANNMonitor
 from amaze import Robot, OutputType, InputType
 from amaze.simu import BaseController
 from amaze.simu.pos import Vec
@@ -31,13 +33,22 @@ class Brain(BaseController):
             Point3D(0, 1, -.5),
         ]
 
-    def __init__(self, genome: Genome, robot: Robot.BuildData):
+    def __init__(self, genome: Genome, robot: Robot.BuildData,
+                 labels: bool = False):
         super().__init__(robot)
         self.ann = ANN3D.build(self.inputs(robot), self.outputs(), genome)
+        self.labels
         self._inputs, self._outputs = self.ann.buffers()
+
+        self._monitor = None
 
     def reset(self):
         self.ann.reset()
+
+    def monitor(self, folder: Path):
+        self._monitor = ANNMonitor(
+            self.ann,
+        )
 
     @staticmethod
     def inputs_types() -> List[InputType]:
