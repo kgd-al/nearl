@@ -1,3 +1,4 @@
+import logging
 import math
 from pathlib import Path
 from typing import List
@@ -13,7 +14,9 @@ def merge_trajectories(images: List[QImage], path: Path):
         big_img = _merge(images, spacing=10)
     else:
         big_img = _merge(images)
-    big_img.save(str(path))
+
+    if not big_img.save(str(path)):
+        logging.error(f"Could not save merged trajectories to {path}")
 
     # for i, img in enumerate(images):
     #     img.save(str(path.with_suffix(f".{i}.png")))
