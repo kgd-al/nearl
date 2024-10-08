@@ -27,7 +27,8 @@ genome_data = Genome.Data.create_for_eshn_cppn(
   with_innovations=True, with_lineage=True
 )
 genome = Genome.from_dot(genome_data, "genome_seed.dot")
-genome.to_dot(genome_data, "genome_roundtrip.png", debug="all")
+genome.to_dot(genome_data, "genome_roundtrip.png", math=".math.pdf", debug=None)
+genome.to_dot(genome_data, "genome_roundtrip.pdf", math="math.pdf", debug=None)
 with open("genome.json", "w") as f:
     json.dump(genome.to_json(), f)
 
