@@ -6,6 +6,8 @@ import os
 import pprint
 import random
 import time
+import humanize
+from datetime import timedelta
 from logging import debug
 from pathlib import Path
 from typing import Callable, Any, Optional
@@ -18,34 +20,19 @@ from brain import Brain
 from utils import merge_trajectories
 
 
-
-print("[kgd-debug]", "Testing dot file roundtrip")
-genome_data = Genome.Data.create_for_eshn_cppn(
-  dimension=3, seed=0,
-  with_input_bias=True, with_input_length=True,
-  with_leo=True, with_output_bias=True,
-  with_innovations=True, with_lineage=True
-)
-genome = Genome.from_dot(genome_data, "genome_seed.dot")
-genome.to_dot(genome_data, "genome_roundtrip.png", math=".math.pdf", debug=None)
-genome.to_dot(genome_data, "genome_roundtrip.pdf", math="math.pdf", debug=None)
-with open("genome.json", "w") as f:
-    json.dump(genome.to_json(), f)
-
-print("[kgd-debug]", "======\n\n")
-exit(42)
-
-
-
 parser = argparse.ArgumentParser(description="NeuroEvolution and Reinforcement Learning testbed")
 parser.add_argument("--seed", default=None, type=int)
+parser.add_argument("--genome-seed", default=None, type=Path)
 options = parser.parse_args()
 
+maze_size = "10x10" #"10x10"
+# maze_class = "U"
+maze_class = "C1"
 # str_mazes = ["M9_4x4_U"]
-str_mazes = ["M9_4x4_U", "M5_4x4_U", "M7_4x4_U", "M0_4x4_U"]
+str_mazes = [f"M{ms}_{maze_size}_{maze_class}" for ms in [9, 5, 7, 0]]
 mazes = [m
          for s in str_mazes
-         for m in Maze.from_string(s).all_rotations()[0:1]]
+         for m in Maze.from_string(s).all_rotations()]
 print(mazes)
 robot = Robot.BuildData.from_string("H5")
 print(robot)
@@ -94,7 +81,7 @@ def _evaluate(genome: Genome, fn: Callable[[dict, Simulation], Any],
         monitor_path.mkdir(exist_ok=True, parents=True)
         with open(monitor_path.joinpath("genome.dna"), "w") as f:
             json.dump(genome.to_json(), f)
-        genome.to_dot(genome_data, monitor_path.joinpath("genome.png"), debug="keepdot")
+        genome.to_dot(genome_data, monitor_path.joinpath("genome.png"), debug="keepdot", math="math.png")
         controller.ann.render3D(controller.labels).write_html(monitor_path.joinpath("ann.html"))
 
     for maze in mazes:
@@ -134,7 +121,7 @@ logging.basicConfig(level=logging.INFO)
 rng = random.Random(seed)
 config = Config(
     seed=seed,
-    threads=os.cpu_count()-1,
+    threads=os.cpu_count()-2,
     log_dir=path,
     log_level=4,
     population_size=pop,
@@ -153,11 +140,20 @@ genome_data = Genome.Data.create_for_eshn_cppn(
   with_innovations=True, with_lineage=True
 )
 
+if options.genome_seed:
+    genome_seed = Genome.from_dot(genome_data, options.genome_seed)
+    random_genome = lambda *_, data: genome_seed
+else:
+    random_genome = Genome.random
+
 evolver = Evolver(config,
                   evaluator=evaluate,
                   genome_class=Genome,
-                  genome_data=dict(data=genome_data))
+                  genome_data=dict(data=genome_data),
+                  random=random_genome)
 
+if options.genome_seed:
+    genome_seed.to_dot(genome_data, path.joinpath("genome_seed.png"))
 
 trajectories_path = path.joinpath("trajectory")
 trajectories_path.mkdir(exist_ok=True, parents=True)
@@ -176,6 +172,8 @@ def trajectory(final: bool):
 print(f"{optimal_fitness=}")
 
 with evolver:
+    start_time = time.perf_counter()
+
     trajectory(final=False)
     for g in range(gen):
         prev_best = evolver.best_fitness
@@ -189,6 +187,8 @@ with evolver:
         if should_break:
             logging.warning("Optimal fitness reached")
             break
+
+    print("Evolution finished in", humanize.precisedelta(timedelta(seconds=time.perf_counter() - start_time)))
 
 evolver.generate_plots("png",
                        options=dict(optimal_fitness=optimal_fitness))
