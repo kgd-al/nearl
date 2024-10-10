@@ -1,3 +1,5 @@
+import json
+import logging
 from pathlib import Path
 from typing import List, Optional
 
@@ -10,6 +12,33 @@ from amaze.simu.types import State
 
 from abrain import Point3D, ANN3D
 from abrain.core.genome import Genome
+
+
+def create_genome_data(seed):
+    return Genome.Data.create_for_eshn_cppn(
+        dimension=3, seed=seed,
+        with_input_bias=True, with_input_length=True,
+        with_leo=True, with_output_bias=True,
+        with_innovations=True, with_lineage=True
+    )
+
+
+def save(genome: Genome, robot: Robot.BuildData, path: Path | str):
+    with open(path, "w") as f:
+        j = genome.to_json()
+        j["robot"] = robot.to_string()
+        json.dump(j, f)
+
+
+def load(path: Path):
+    with open(path, "r") as gf:
+        j = json.load(gf)
+        if "robot" not in j:
+            robot = Robot.BuildData.from_string("H7")
+            logging.error("No robot specification in provided genome file. Is it an obsolete version?")
+        else:
+            robot = Robot.BuildData.from_string(j.pop("robot"))
+        return Genome.from_json(j), robot
 
 
 class Brain(BaseController):
@@ -81,3 +110,35 @@ class Brain(BaseController):
         if self._monitor is not None:
             self._monitor.step()
         return self.discrete_actions[np.argmax(self._outputs)]
+
+
+def controller_data(controller: Brain):
+    ann = controller.ann
+
+    edges = [0, 0, 0, 0]
+
+    for n in ann.neurons():
+        if n.type == n.Type.I:
+            continue
+        for l in n.links():
+            _n = l.src()
+            if _n.type != n.Type.I:
+                continue
+
+            x, _, z = _n.pos.tuple()
+            if max(abs(x), abs(z)) < 1:
+                continue
+
+            if abs(x) == 1:
+                edges[int((x+1)//2)] += 1
+
+            if abs(z) == 1:
+                edges[int(2 + (z+1)//2)] += 1
+
+    return dict(
+        fitness_offset=(
+            -2 if ((sum((len(n.links()) > 0) for n in ann.output_neurons()) < 4)
+                   or (sum(v > 0 for v in edges)) < 4)
+            else 0
+        )
+    )

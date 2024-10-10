@@ -16,7 +16,7 @@ from amaze import MazeWidget, Simulation, Maze, Robot
 
 from abrain import Genome
 from abrain.neat.evolver import NEATEvolver as Evolver, NEATConfig as Config
-from brain import Brain
+from brain import Brain, create_genome_data, controller_data, save
 from utils import merge_trajectories
 
 
@@ -44,63 +44,20 @@ robot = Robot.BuildData.from_string("H7")
 print(robot)
 
 
-def controller_data(controller: Brain):
-    ann = controller.ann
-
-    edges = [0, 0, 0, 0]
-
-    for n in ann.neurons():
-        if n.type == n.Type.I:
-            continue
-        for l in n.links():
-            _n = l.src()
-            if _n.type != n.Type.I:
-                continue
-
-            x, _, z = _n.pos.tuple()
-            if max(abs(x), abs(z)) < 1:
-                continue
-
-            if abs(x) == 1:
-                edges[int((x+1)//2)] += 1
-
-            if abs(z) == 1:
-                edges[int(2 + (z+1)//2)] += 1
-
-    return dict(
-        fitness_offset=(
-            -2 if ((sum((len(n.links()) > 0) for n in ann.output_neurons()) < 4)
-                   or (sum(v > 0 for v in edges)) < 4)
-            else 0
-        )
-    )
-
-
 def _evaluate(genome: Genome, fn: Callable[[dict, Simulation], Any],
               details: int, _path: Optional[Path] = None):
 
-    monitor = (details >= 2)
-    controller = Brain(genome, robot, labels=monitor)
+    controller = Brain(genome, robot, labels=False)
     data = controller_data(controller)
 
     if details:
         _path.mkdir(exist_ok=True, parents=True)
-        with open(_path.joinpath("genome.dna"), "w") as f:
-            json.dump(genome.to_json(), f)
-
-    if monitor:
-        genome.to_dot(genome_data, _path.joinpath("genome.png"), debug="keepdot", math="math.png")
-        controller.ann.render3D(controller.labels).write_html(_path.joinpath("ann.html"))
+        save(genome, robot, _path.joinpath("genome.dna"))
 
     for maze in mazes:
-        print(f"\n\n== {maze} ==")
         controller.reset()
-        if monitor:
-            controller.monitor(_path.joinpath(maze.to_string()))
         simulation = Simulation(maze, robot, save_trajectory=details)
         simulation.run(controller)
-        if monitor:
-            controller.stop_monitor()
         yield fn(data, simulation)
 
 
@@ -130,7 +87,7 @@ logging.basicConfig(level=logging.INFO)
 rng = random.Random(seed)
 config = Config(
     seed=seed,
-    threads=os.cpu_count()-2,
+    threads=os.cpu_count()-1,
     log_dir=path,
     log_level=4,
     population_size=pop,
@@ -142,12 +99,7 @@ config = Config(
 )
 pprint.pprint(config)
 
-genome_data = Genome.Data.create_for_eshn_cppn(
-  dimension=3, seed=seed,
-  with_input_bias=True, with_input_length=True,
-  with_leo=True, with_output_bias=True,
-  with_innovations=True, with_lineage=True
-)
+genome_data = create_genome_data(seed)
 
 if options.genome_seed:
     genome_seed = Genome.from_dot(genome_data, options.genome_seed)

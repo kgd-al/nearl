@@ -1,4 +1,4 @@
-CPPN {
+CPPN { // Solves U mazes (what resolution?)
     x0; y0; z0; x1; y1; z1; l; b;
 
     0 [sq];
