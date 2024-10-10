@@ -75,7 +75,9 @@ class Brain(BaseController):
 
     def __call__(self, inputs: State) -> Vec:
         self._inputs[:] = inputs.flatten()
+        # print([n.value for n in self.ann.output_neurons()])
         self.ann(self._inputs, self._outputs)
+        # print(">", [n.value for n in self.ann.output_neurons()])
         if self._monitor is not None:
             self._monitor.step()
         return self.discrete_actions[np.argmax(self._outputs)]

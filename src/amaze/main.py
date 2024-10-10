@@ -20,21 +20,27 @@ from brain import Brain
 from utils import merge_trajectories
 
 
-parser = argparse.ArgumentParser(description="NeuroEvolution and Reinforcement Learning testbed")
+parser = argparse.ArgumentParser(
+    description="NeuroEvolution and Reinforcement Learning testbed"
+                " (evolution)")
 parser.add_argument("--seed", default=None, type=int)
 parser.add_argument("--genome-seed", default=None, type=Path)
 options = parser.parse_args()
 
-maze_size = "10x10" #"10x10"
-# maze_class = "U"
-maze_class = "C1"
-# str_mazes = ["M9_4x4_U"]
-str_mazes = [f"M{ms}_{maze_size}_{maze_class}" for ms in [9, 5, 7, 0]]
-mazes = [m
-         for s in str_mazes
-         for m in Maze.from_string(s).all_rotations()]
+
+def all_mazes(seeds: list, size: int, mclass: str):
+    suffix = f"_{size}x{size}_{mclass}"
+    return [m
+            for s in seeds
+            for m in Maze.from_string(f"M{s}{suffix}").all_rotations()]
+
+
+trivial_mazes = all_mazes([9, 5, 7, 0], 4, "U")
+simple_mazes = all_mazes([15, 1, 3, 12], 5, "C1")
+
+mazes = simple_mazes
 print(mazes)
-robot = Robot.BuildData.from_string("H5")
+robot = Robot.BuildData.from_string("H7")
 print(robot)
 
 
@@ -71,23 +77,26 @@ def controller_data(controller: Brain):
 
 
 def _evaluate(genome: Genome, fn: Callable[[dict, Simulation], Any],
-              details: bool, monitor_path: Optional[Path] = None):
+              details: int, _path: Optional[Path] = None):
 
-    monitor = (details and monitor_path is not None)
+    monitor = (details >= 2)
     controller = Brain(genome, robot, labels=monitor)
     data = controller_data(controller)
 
-    if monitor:
-        monitor_path.mkdir(exist_ok=True, parents=True)
-        with open(monitor_path.joinpath("genome.dna"), "w") as f:
+    if details:
+        _path.mkdir(exist_ok=True, parents=True)
+        with open(_path.joinpath("genome.dna"), "w") as f:
             json.dump(genome.to_json(), f)
-        genome.to_dot(genome_data, monitor_path.joinpath("genome.png"), debug="keepdot", math="math.png")
-        controller.ann.render3D(controller.labels).write_html(monitor_path.joinpath("ann.html"))
+
+    if monitor:
+        genome.to_dot(genome_data, _path.joinpath("genome.png"), debug="keepdot", math="math.png")
+        controller.ann.render3D(controller.labels).write_html(_path.joinpath("ann.html"))
 
     for maze in mazes:
+        print(f"\n\n== {maze} ==")
         controller.reset()
         if monitor:
-            controller.monitor(monitor_path.joinpath(maze.to_string()))
+            controller.monitor(_path.joinpath(maze.to_string()))
         simulation = Simulation(maze, robot, save_trajectory=details)
         simulation.run(controller)
         if monitor:
@@ -159,13 +168,13 @@ trajectories_path = path.joinpath("trajectory")
 trajectories_path.mkdir(exist_ok=True, parents=True)
 
 
-def trajectory(final: bool):
+def trajectory(_improved: bool, _final: bool):
     _id = f"{evolver.generation:0{gen_digits}d}"
     merge_trajectories(
         list(_evaluate(evolver.champion.genome,
                        lambda _, s: MazeWidget.plot_trajectory(s, 500),
-                       details=True,
-                       monitor_path=path.joinpath(_id) if final else None)),
+                       details=int(_improved) + 2 * int(_final),
+                       _path=path.joinpath(_id))),
         trajectories_path.joinpath(f"{_id}.png"))
 
 
@@ -174,15 +183,16 @@ print(f"{optimal_fitness=}")
 with evolver:
     start_time = time.perf_counter()
 
-    trajectory(final=False)
+    trajectory(_improved=True, _final=False)
     for g in range(gen):
         prev_best = evolver.best_fitness
         evolver.step()
 
         should_break = (evolver.best_fitness >= optimal_fitness)
+        improved = (evolver.best_fitness > prev_best)
         end = should_break or (g == gen-1)
-        if (evolver.best_fitness > prev_best) or end:
-            trajectory(final=end)
+        if improved or end:
+            trajectory(_improved=improved, _final=end)
 
         if should_break:
             logging.warning("Optimal fitness reached")
