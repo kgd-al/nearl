@@ -2,6 +2,8 @@ import argparse
 import json
 import pprint
 import time
+from glob import glob
+
 import humanize
 from datetime import timedelta
 from pathlib import Path
@@ -18,11 +20,6 @@ from utils import merge_trajectories
 genome_data = create_genome_data(seed=0)
 
 
-save(Genome.from_dot(genome_data, "stash/genome_seeds/SLP_CNN_v2.dot"),
-     Robot.BuildData.from_string("H7"),
-     "tmp/genome_seed.dna")
-
-
 def pretty_print(something):
     print(indent(pprint.pformat(something), "  "))
 
@@ -34,17 +31,23 @@ def with_suffix(path: Path, suffix: str):
 
 
 def process(path: Path, mazes: List[Maze], options: argparse.Namespace):
+    if path.suffix == ".dot":
+        dot_path = path
+        path = path.with_suffix(".dna")
+        save(Genome.from_dot(genome_data, dot_path), Robot.BuildData.from_string("H7"), path)
+
     genome, robot = load(path)
-    print(genome, path)
 
     if options.render is not None:
         genome_dot = with_suffix(path, options.render)
         genome_dot = genome.to_dot(genome_data, genome_dot)
-        print(path, "rendered to", genome_dot)
+        if options.verbosity >= 0:
+            print(path, "rendered to", genome_dot)
 
     if options.math is not None:
         genome_math = genome.to_math(genome_data, path, extension=options.math)
-        print(path, "equation system written to", genome_math)
+        if options.verbosity >= 0:
+            print(path, "equation system written to", genome_math)
 
     simulate = options.monitor or options.trajectory
     trajectories = []
@@ -114,9 +117,14 @@ def main():
                         default=None, const="math.png",
                         help="Generate equation system for genome to file (default math.png)")
     options = parser.parse_args()
+    options.verbosity = options.verbose - options.quiet
 
-    verbosity = options.verbose - options.quiet
-    if verbosity >= 0:
+    expanded_genome_paths = [Path(p) for maybe_glob in options.genomes for p in glob(str(maybe_glob))]
+    if len(options.genomes) != len(expanded_genome_paths):
+        options.genomes = expanded_genome_paths
+        print("Expanded glob expression(s) in provided genome path(s)")
+
+    if options.verbosity >= 0:
         print("Provided options:")
         pretty_print(options.__dict__)
 
@@ -131,7 +139,7 @@ def main():
             for m in mazes for r in rotations
         ]
 
-    if verbosity >= 0:
+    if options.verbosity >= 0:
         print("Using mazes:")
         pretty_print(mazes)
 
