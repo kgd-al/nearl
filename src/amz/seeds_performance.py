@@ -4,24 +4,42 @@ from argparse import Namespace
 from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from PyQt5.QtGui import QImage
 
-from amaze import Maze, StartLocation
+from amaze import Maze, StartLocation, MazeWidget, qt_application
 from tabulate import tabulate
 
 from utils import merge_trajectories
 
 from rerun import process
 
-mazes = [
-    "M3_5x5_U",
-    "M3_5x5_U_l.5_L1",
-    "M12_5x5_C1", "M12_5x5_t1_Twarning-1",
-    "M12_5x5_Cwarning-1", "M12_5x5_t1_T1",
-]
+base = "M8_6x6"
+
+mazes_desc = {
+    f"{base}_U": "Trivial",
+    f"{base}_U_l0.25_L1": "Trivial (attractive lures)",
+    f"{base}_U_l0.25_Lwarning-1": "Trivial (repulsive lures)",
+    f"{base}_U_l0.25_Lwarning-.5": "Trivial (repulsive gray lures)",
+
+    f"{base}_C1": "Simple (attractive)",
+    f"{base}_t1_Twarning-1": "Inverted (attractive)",
+    f"{base}_Cwarning-1": "Simple (repulsive)",
+    f"{base}_t1_T1": "Inverted (repulsive)",
+
+    f"{base}_C1_t0.5_T.5": "Trap (attractive)",
+    f"{base}_Cwarning-1_t0.5_Twarning-.5": "Trap (repulsive)",
+    f"{base}_C1_t0.5_Twarning-.5": "Trap (arr)",
+    f"{base}_Cwarning-1_t0.5_T.5": "Trap (raa)",
+
+    f"{base}_C1_l0.5_L.25_t0.5_T.5": "Complex (attractive)",
+    f"{base}_Cwarning-1_l0.5_Lwarning-.25_t0.5_Twarning-.5": "Complex (repulsive)",
+    f"{base}_C1_l0.5_Lwarning-.25_t0.5_Twarning-.5": "Complex (arr)",
+    f"{base}_Cwarning-1_l0.5_L.25_t0.5_T.5": "Complex (raa)",
+}
 mazes = [_m
-         for m in mazes
+         for m in mazes_desc
          for _m in Maze.from_string(m, warnings=False).all_rotations()]
 
 
@@ -29,15 +47,22 @@ def maze_id(_m: Maze):
     return _m.build_data().where(start=StartLocation.SOUTH_WEST).to_string()
 
 
-genomes = Path("saved/genome_seeds/").glob("*.dot")
+genomes = list(Path("saved/genome_seeds/").glob("*.dot"))
 
-folder = Path("tmp/seeds_performance/")
+folder = Path("overleaf/seeds_performance/")
 folder.mkdir(exist_ok=True, parents=True)
+
+mazes_dir = folder.joinpath("mazes")
+mazes_dir.mkdir(exist_ok=True, parents=True)
+_ = qt_application()
+for m in mazes_desc:
+    if not (f := mazes_dir.joinpath(f"{m}.png")).exists():
+        MazeWidget.static_render_to_file(Maze.from_string(m, warnings=False), f, size=512)
 
 options = Namespace(
     folder=folder,
     monitor=False, trajectory=1, merge_trajectories=False,
-    render=".png", render_3D=True, math="png",
+    render=".pdf", render_3D=True, math=".math.pdf",
 )
 
 cache_file = folder.joinpath("cache.csv")
@@ -68,13 +93,14 @@ for genome in genomes:
 
     print("-"*80)
 
-print(df)
 df.sort_index(inplace=True)
 df.to_csv(cache_file)
 
 # Condensed form
 df = df.reset_index().pivot(index="Maze", columns="Genome")
+df.sort_index(inplace=True, key=np.vectorize(lambda _i: list(mazes_desc.keys()).index(_i)))
 print(df)
+print()
 
 df = pd.DataFrame(
         columns=pd.MultiIndex.from_product([["Signs"], ["C", "T", "L"]]),
@@ -87,10 +113,15 @@ df = pd.DataFrame(
         ],
         index=df.index
     ).join(df)
+df["Details"] = mazes_desc.values()
 
-
-def fmt(x): return r"\ok" if x == 1 else r"\nok"
-
-
-print(df.to_string(float_format=fmt))
-print(df.to_latex(float_format=fmt))
+print(df.to_string(float_format=lambda x: f"{x:.1g}"))
+with open(folder.joinpath("summary.tex"), "wt") as f:
+    f.writelines([
+        fr"\def\mazes{{{', '.join(f'{k}/{v}' for k, v in mazes_desc.items())}}}", "\n",
+        fr"\def\genomes{{{', '.join(g.stem for g in genomes)}}}", "\n",
+        r"\def\circ#1{\tikz\fill[#1] (0, 0) circle (.4em);}", "\n"
+        r"\def\ok{\circ{green}}", "\n",
+        r"\def\nok{\circ{red, opacity=.2}}", "\n"
+    ])
+    f.write(df.to_latex(float_format=lambda x: r"\ok" if x == 1 else r"\nok"))

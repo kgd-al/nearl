@@ -108,6 +108,9 @@ def main():
     parser.add_argument("--trajectory", const=1, nargs='?',
                         default=0, help="Render the agent's trajectory to file."
                                         " Provided value controls verbosity.")
+    parser.add_argument("--no-merge-trajectories",
+                        dest='merge_trajectories', action='store_false', default=True,
+                        help="Do not merge individual trajectories into one big summary")
     parser.add_argument("--render", nargs="?",
                         default=None, const="png",
                         help="Render genome to file (default png)")
@@ -126,7 +129,7 @@ def main():
         print("Provided options:")
         pretty_print(options.__dict__)
 
-    if options.render[0] != ".":
+    if options.render is not None and options.render[0] != ".":
         options.render = "." + options.render
 
     if options.folder is not None:
