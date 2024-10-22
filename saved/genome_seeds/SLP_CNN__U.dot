@@ -1,4 +1,4 @@
-CPPN { // Solves U mazes (what resolution?)
+CPPN { // Solves U and t1_T1 and Cwarning-1 mazes (what resolution?)
     x0; y0; z0; x1; y1; z1; l; b;
 
     0 [sq];
@@ -18,15 +18,8 @@ CPPN { // Solves U mazes (what resolution?)
     0 -> 2 [+1];
     1 -> 2 [+1];
 
-    b -> L [+1];
+    b -> L [.75];
     2 -> L [-1];
 
-    b -> W [-1];
-
-//     y0 -> L [-0.5772600769996643];
-//     x1 -> L [-0.7073347568511963];
-//     y1 -> W [-0.32454222440719604];
-//     l -> W [0.7609865665435791];
-//     b -> L [-0.006533564534038305];
-//     b -> B [-0.22090686857700348];
+    b -> W [-.15];
 }

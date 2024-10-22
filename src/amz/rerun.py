@@ -1,19 +1,16 @@
 import argparse
-import json
 import pprint
 import time
-from glob import glob
-
-import humanize
 from datetime import timedelta
 from pathlib import Path
 from textwrap import indent
 from typing import List
 
+import humanize
 import numpy as np
+from amaze import Maze, Robot, StartLocation, Simulation, MazeWidget
 
-from abrain import Genome
-from amaze import Maze, StartLocation, Simulation, MazeWidget, Robot
+from abrain.core.genome import Genome
 from brain import create_genome_data, Brain, controller_data, load, save
 from utils import merge_trajectories
 
@@ -24,47 +21,47 @@ def pretty_print(something):
     print(indent(pprint.pformat(something), "  "))
 
 
-def with_suffix(path: Path, suffix: str):
-    if suffix[0] != ".":
-        suffix = "." + suffix
-    return path.with_suffix(suffix)
-
-
 def process(path: Path, mazes: List[Maze], options: argparse.Namespace):
+    folder = options.folder or path.parent
+    base = folder.joinpath(path.stem)
+
+    if len(mazes) == 0:
+        return base, None
+
     if path.suffix == ".dot":
         dot_path = path
-        path = path.with_suffix(".dna")
-        save(Genome.from_dot(genome_data, dot_path), Robot.BuildData.from_string("H7"), path)
+        path = base.with_suffix(".dna")
+        save(Genome.from_dot(genome_data, dot_path),
+             Robot.BuildData.from_string("H7"),
+             path)
 
     genome, robot = load(path)
 
     if options.render is not None:
-        genome_dot = with_suffix(path, options.render)
+        genome_dot = base.with_suffix(options.render)
         genome_dot = genome.to_dot(genome_data, genome_dot)
-        if options.verbosity >= 0:
-            print(path, "rendered to", genome_dot)
+        print(path, "rendered to", genome_dot)
 
     if options.math is not None:
-        genome_math = genome.to_math(genome_data, path, extension=options.math)
-        if options.verbosity >= 0:
-            print(path, "equation system written to", genome_math)
+        genome_math = genome.to_math(genome_data, base, extension=options.math)
+        print(path, "equation system written to", genome_math)
 
     simulate = options.monitor or options.trajectory
     trajectories = []
 
+    rewards = None
     if simulate:
-        base_folder = path.with_suffix("")
-        base_folder.mkdir(exist_ok=True, parents=True)
+        base.mkdir(exist_ok=True, parents=True)
 
         controller = Brain(genome, robot, labels=True)
         data = controller_data(controller)
 
         if options.render_3D:
-            controller.ann.render3D(controller.labels).write_html(base_folder.joinpath("ann.html"))
+            controller.ann.render3D(controller.labels).write_html(base.joinpath("ann.html"))
 
         rewards = []
         for maze in mazes:
-            folder = base_folder.joinpath(maze.to_string())
+            folder = base.joinpath(maze.to_string())
             folder.mkdir(exist_ok=True, parents=False)
 
             controller.reset()
@@ -81,13 +78,16 @@ def process(path: Path, mazes: List[Maze], options: argparse.Namespace):
 
             if options.trajectory:
                 trajectories.append(MazeWidget.plot_trajectory(simulation, 500))
+                trajectories[-1].save(str(folder.joinpath("trajectory.png")))
 
-        if options.trajectory:
-            merge_trajectories(trajectories, path.with_suffix(".trajectories.png"))
+        if options.trajectory and options.merge_trajectories:
+            merge_trajectories(trajectories, base.with_suffix(".trajectories.png"))
 
         print("Rewards:", rewards)
         print("  range:", np.quantile(rewards, [0, .5, 1]))
         print("    avg:", np.average(rewards), "+-", np.std(rewards))
+
+    return base, rewards
 
 
 def main():
@@ -116,17 +116,21 @@ def main():
     parser.add_argument("--math", nargs="?",
                         default=None, const="math.png",
                         help="Generate equation system for genome to file (default math.png)")
+    parser.add_argument("--folder", type=Path, default=None,
+                        help="Where to put the output files (defaults to the"
+                             "provided genomes' parent directory)")
     options = parser.parse_args()
-    options.verbosity = options.verbose - options.quiet
 
-    expanded_genome_paths = [Path(p) for maybe_glob in options.genomes for p in glob(str(maybe_glob))]
-    if len(options.genomes) != len(expanded_genome_paths):
-        options.genomes = expanded_genome_paths
-        print("Expanded glob expression(s) in provided genome path(s)")
-
-    if options.verbosity >= 0:
+    verbosity = options.verbose - options.quiet
+    if verbosity >= 0:
         print("Provided options:")
         pretty_print(options.__dict__)
+
+    if options.render[0] != ".":
+        options.render = "." + options.render
+
+    if options.folder is not None:
+        options.folder.mkdir(exist_ok=True, parents=True)
 
     mazes = options.maze
     if options.rotations == "all":
@@ -139,7 +143,7 @@ def main():
             for m in mazes for r in rotations
         ]
 
-    if options.verbosity >= 0:
+    if verbosity >= 0:
         print("Using mazes:")
         pretty_print(mazes)
 

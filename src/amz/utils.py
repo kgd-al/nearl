@@ -8,6 +8,8 @@ from PyQt5.QtGui import QImage, QPainter
 
 
 def merge_trajectories(images: List[QImage], path: Path):
+    assert all(not i.isNull() for i in images)
+
     n = len(images)
     if (n % 4) == 0:  # Assume we have all rotations (sequentially)
         images = [_merge(images[i:i+4]) for i in range(0, n, 4)]
