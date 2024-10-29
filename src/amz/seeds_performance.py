@@ -16,6 +16,7 @@ from utils import merge_trajectories
 from rerun import process
 
 base = "M8_6x6"
+# base = "M12_5x5"
 
 mazes_desc = {
     f"{base}_U": "Trivial",
@@ -72,19 +73,25 @@ except:
     df = pd.DataFrame(columns=["Reward"],
                       index=pd.MultiIndex.from_product(
                           [[], []], names=["Genome", "Maze"]))
-    print(df)
+
+df.drop("MLP", inplace=True)
+print("Refreshing MLP performance")
+
+
+def gid(_genome): return _genome.stem
+
 
 for genome in genomes:
-    gid = genome.stem.split("_")[-1]
+    _gid = gid(genome)
     print("="*80)
-    unseen_mazes = list(filter(lambda m: (gid, maze_id(m)) not in df.index, mazes))
+    unseen_mazes = list(filter(lambda m: (_gid, maze_id(m)) not in df.index, mazes))
 
     output_base, rewards = process(genome, unseen_mazes, options)
     ddict = defaultdict(lambda: 0)
     for maze, reward in zip(unseen_mazes, rewards or []):
-        ddict[maze_id(maze)] += reward
+        ddict[maze_id(maze)] += (reward == 1)
     for key, value in ddict.items():
-        df.loc[(gid, key), "Reward"] = value / 4
+        df.loc[(_gid, key), "Reward"] = value
 
     merge_trajectories([
         QImage(str(output_base.joinpath(maze.to_string()).joinpath("trajectory.png")))
@@ -97,31 +104,46 @@ df.sort_index(inplace=True)
 df.to_csv(cache_file)
 
 # Condensed form
+margin = "%"
 df = df.reset_index().pivot(index="Maze", columns="Genome")
-df.sort_index(inplace=True, key=np.vectorize(lambda _i: list(mazes_desc.keys()).index(_i)))
-print(df)
-print()
+sorter = np.vectorize(lambda _i: list(mazes_desc.keys()).index(_i))
+df.sort_index(inplace=True, key=sorter)
 
 df = pd.DataFrame(
         columns=pd.MultiIndex.from_product([["Signs"], ["C", "T", "L"]]),
         data=[
-            [stats[attr]
+            [int(stats[attr])
              for attr in ["clues", "traps", "lures"]
              if (stats := m.stats())]
             for _m in df.index
-            if (m := Maze.from_string(_m, warnings=False))
+            if _m[0] == "M" and (m := Maze.from_string(_m, warnings=False))
         ],
         index=df.index
     ).join(df)
-df["Details"] = mazes_desc.values()
 
-print(df.to_string(float_format=lambda x: f"{x:.1g}"))
+df["%Tot"] = 100 * (df == 4).sum(axis=1) / len(genomes)
+df["Details"] = list(mazes_desc.values())
+df.loc["Total (%)", [("Reward", gid(_g)) for _g in genomes]] = (
+    100 * (df == 4).sum(axis=0)) / len(df)
+
+print(df.to_string(float_format="%g", na_rep=""))
 with open(folder.joinpath("summary.tex"), "wt") as f:
     f.writelines([
         fr"\def\mazes{{{', '.join(f'{k}/{v}' for k, v in mazes_desc.items())}}}", "\n",
         fr"\def\genomes{{{', '.join(g.stem for g in genomes)}}}", "\n",
-        r"\def\circ#1{\tikz\fill[#1] (0, 0) circle (.4em);}", "\n"
-        r"\def\ok{\circ{green}}", "\n",
-        r"\def\nok{\circ{red, opacity=.2}}", "\n"
+        r"\def\circ#1{", "\n",
+        r" \begin{tikzpicture}", "\n",
+        r"  \pgfmathsetmacro{\a}{360*#1/4}", "\n",
+        r"  \fill[red!10] (0, 0) circle (.4em);", "\n",
+        r"  \fill[green] (.4em, 0) arc (0:\a:.4em) -- (0, 0) -- cycle;", "\n",
+        r" \end{tikzpicture}", "\n",
+        r"}", "\n"
     ])
-    f.write(df.to_latex(float_format=lambda x: r"\ok" if x == 1 else r"\nok"))
+
+    def formatter(x): return fr"\circ{{{int(x)}}}" if x <= 4 else x
+
+    f.write(df.to_latex(escape=True, float_format="%g", na_rep="",
+                        formatters={
+                            ("Reward", gid(_g)): formatter
+                            for _g in genomes
+                        }))

@@ -22,7 +22,7 @@ CPPN { // Solves C1 mazes (for a resolution of 7 -> Resolution input to the CPPN
     b -> L [+.65];
     2 -> L [-1];
 
-    // ???
+    // Sign attraction / wall repulsion
     3 [abs];
     5 [abs];
     4 [step];
