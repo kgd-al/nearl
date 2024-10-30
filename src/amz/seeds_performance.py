@@ -74,7 +74,8 @@ except:
                       index=pd.MultiIndex.from_product(
                           [[], []], names=["Genome", "Maze"]))
 
-df.drop("MLP", inplace=True)
+df.drop("P_A", inplace=True)
+# df.drop("MLP", inplace=True)
 print("Refreshing MLP performance")
 
 
