@@ -7,13 +7,171 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from PyQt5.QtGui import QImage
+from abrain._cpp.phenotype import CPPN
 
-from amaze import Maze, StartLocation, MazeWidget, qt_application
+from amaze import Maze, StartLocation, MazeWidget, qt_application, Sign
+from amaze.misc.resources import np_images
+from matplotlib import colors
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.ticker import FormatStrFormatter
 from tabulate import tabulate
+from termcolor import colored
 
 from utils import merge_trajectories
 
 from rerun import process
+
+if True:
+    import matplotlib.pyplot as plt
+
+    n = 51
+    c = np.linspace(-1, 1, n)
+
+    fns = CPPN.functions()
+    bsgm = fns["bsgm"]
+    step = fns["step"]
+    sin = fns["sin"]
+    abs = fns["abs"]
+
+    outputs = [(.5, 0), (0, .5), (-.5, 0), (0, -.5)]
+
+    plt.locator_params(nbins=5)
+
+    def plot(_fn, title):
+
+        data = [
+            [[_fn(x, y, _x1, _y1) for x in c] for y in c]
+            for _x1, _y1 in outputs
+        ]
+
+        vmin, vmax = np.quantile(data, [0, 1])
+        vabs = max(vmin, -vmin, vmax, -vmax)
+        vmin, vmax = -vabs, vabs
+
+        norm = colors.Normalize(vmin=vmin, vmax=vmax)
+
+        fig, axes = plt.subplots(2, 2, sharex="all", sharey="all")
+
+        images = []
+        for ax, data, (x1, y1) in zip(axes.flatten(), data, outputs):
+            images.append(ax.imshow(data, aspect="equal", norm=norm,
+                                    extent=(-1, 1, -1, 1), origin="lower",
+                                    cmap="bwr"))
+            ax.scatter([x1], [y1], c='k')
+
+        fig.suptitle(title)
+        fig.colorbar(images[0], ax=axes, orientation='vertical',
+                     fraction=.1)
+
+        for ax in axes[1, :]:
+            ax.set_xlabel("X")
+        for ax in axes[:, 0]:
+            ax.set_ylabel("Y")
+
+        return fig
+
+
+    def fake_weight1(_x, _y, _x1, _y1):
+        return bsgm(
+                    -step(
+                        step(
+                            abs(_x+_x1)-1.4
+                        )
+                        +
+                        step(
+                            abs(_y+_y1)-1.4
+                        )
+                        - 0.5
+                    )
+                    + 0.1 * sin(
+                        step(abs(_x) - .33)
+                        + step(abs(_y) - .33)
+                    )
+        )
+
+    def fake_weight2(_x, _y, _x1, _y1):
+        return bsgm(
+                    -step(
+                        step(
+                            abs(_x+_x1)-1.4
+                        )
+                        +
+                        step(
+                            abs(_y+_y1)-1.4
+                        )
+                        - 0.5
+                    )
+                    - 0.1 * sin(
+                        step(abs(_x) - .33)
+                        + step(abs(_y) - .33)
+                    )
+        )
+
+    def fake_leo(_x, _y, _x1, _y1):
+        return step(
+            step(
+                abs(.5*_x+_x1)
+                - .7
+            )
+            +
+            step(
+                abs(.5*_y+_y1)
+                - .7
+            )
+            - 0.5
+        )
+
+    with PdfPages("foo.pdf") as pdf:
+        pdf.savefig(plot(fake_weight1, 'Weights (full)'))
+        pdf.savefig(plot(fake_weight2, 'Weights (hollow)'))
+        pdf.savefig(plot(fake_leo, 'LEO'))
+        pdf.savefig(plot(lambda *args: fake_weight1(*args) * fake_leo(*args),
+                         'Full'))
+        pdf.savefig(plot(lambda *args: fake_weight2(*args) * fake_leo(*args),
+                         'Hollow'))
+    print("Generated plots")
+
+    # exit(42)
+
+# Seems to be working fine
+# bsgm(-step(step(abs(x+x1)-1.4)+step(abs(y+y1)-1.4)-0.5)+0.1*kgdsin(step(abs(x)-.33)+step(abs(y)-.33)))
+# bsgm(-step(step(abs(x+x1)-1.4)+step(abs(y+y1)-1.4)-0.5)-0.2*kgdsin(step(abs(x)-.33)+step(abs(y)-.33)))
+
+# Connectivity
+# step(step(abs(.5*x+x1)-.5)+step(abs(.5*y+y1)-.5)-0.5)
+
+if False:
+    import cv2
+
+    # Confirm that the signs have the expected characteristics
+    errors = 0
+    df = pd.DataFrame(columns=["AType", "Att", "FType", "Fll"])
+    for s, a, f in [("arrow", "attractive", "full"),
+                    ("warning", "repulsive", "full"),
+                    ("rarrow", "attractive", "hollow"),
+                    ("alien", "repulsive", "hollow")]:
+        for r in list(range(5, 31, 2)) + [45, 125]:
+            imgs = np_images([Sign(s, 1)], resolution=r)
+            img = cv2.resize(imgs[0][0], dsize=(3, 3), interpolation=cv2.INTER_AREA)
+            attractiveness = sum(img[:, 2] - img[:, 0])
+            edge = -1 if a == "attractive" else 0
+            fullness = img[1, edge] - .5*img[0, edge] - .5*img[2, edge]
+            if (a == "attractive") != (attractiveness > 0):
+                attractiveness = colored(attractiveness, "red")
+                errors += 1
+            if (f == "full") != (fullness > 0):
+                fullness = colored(fullness, "red")
+                errors += 1
+            df.loc[f"{s}-{r}"] = [a, attractiveness, f, fullness]
+            # print(s, r, attractiveness, fullness)
+            # print(img)
+            # print()
+    print(tabulate(df, headers=df.columns))
+
+    if errors > 0:
+        print("Got some stuff wrong. Try again Bragg")
+    exit(42)
+
 
 base = "M8_6x6"
 # base = "M12_5x5"
@@ -23,21 +181,19 @@ mazes_desc = {
     f"{base}_U_l0.25_L1": "Trivial (attractive lures)",
     f"{base}_U_l0.25_Lwarning-1": "Trivial (repulsive lures)",
     f"{base}_U_l0.25_Lwarning-.5": "Trivial (repulsive gray lures)",
-
-    f"{base}_C1": "Simple (attractive)",
-    f"{base}_t1_Twarning-1": "Inverted (attractive)",
-    f"{base}_Cwarning-1": "Simple (repulsive)",
-    f"{base}_t1_T1": "Inverted (repulsive)",
-
-    f"{base}_C1_t0.5_T.5": "Trap (attractive)",
-    f"{base}_Cwarning-1_t0.5_Twarning-.5": "Trap (repulsive)",
-    f"{base}_C1_t0.5_Twarning-.5": "Trap (arr)",
-    f"{base}_Cwarning-1_t0.5_T.5": "Trap (raa)",
-
-    f"{base}_C1_l0.5_L.25_t0.5_T.5": "Complex (attractive)",
-    f"{base}_Cwarning-1_l0.5_Lwarning-.25_t0.5_Twarning-.5": "Complex (repulsive)",
-    f"{base}_C1_l0.5_Lwarning-.25_t0.5_Twarning-.5": "Complex (arr)",
-    f"{base}_Cwarning-1_l0.5_L.25_t0.5_T.5": "Complex (raa)",
+}
+mazes_desc.update({
+    f"{base}_C{c}-1_t.5_T{t}-1": l
+    for c, t, l in [
+        ("arrow", "warning", "Attractive full"),
+        ("warning", "arrow", "Repulsive full"),
+        ("rarrow", "alien", "Attractive hollow"),
+        ("alien", "rarrow", "Repulsive hollow")
+    ]
+})
+mazes_desc = {
+    Maze.BuildData.from_string(k).to_string(): v
+    for k, v in mazes_desc.items()
 }
 mazes = [_m
          for m in mazes_desc
@@ -64,19 +220,21 @@ options = Namespace(
     folder=folder,
     monitor=False, trajectory=1, merge_trajectories=False,
     render=".pdf", render_3D=True, math=".math.pdf",
+    retina=9, plot_cppn=True
 )
 
 cache_file = folder.joinpath("cache.csv")
 try:
     df = pd.read_csv(cache_file, index_col=[0, 1])
+    # raise ValueError()
 except:
     df = pd.DataFrame(columns=["Reward"],
                       index=pd.MultiIndex.from_product(
                           [[], []], names=["Genome", "Maze"]))
 
-df.drop("P_A", inplace=True)
+# df.drop("P_A", inplace=True)
 # df.drop("MLP", inplace=True)
-print("Refreshing MLP performance")
+# print("Refreshing MLP performance")
 
 
 def gid(_genome): return _genome.stem
@@ -127,7 +285,7 @@ df["Details"] = list(mazes_desc.values())
 df.loc["Total (%)", [("Reward", gid(_g)) for _g in genomes]] = (
     100 * (df == 4).sum(axis=0)) / len(df)
 
-print(df.to_string(float_format="%g", na_rep=""))
+print(df.to_string(float_format=lambda x: f"{x:g}", na_rep=""))
 with open(folder.joinpath("summary.tex"), "wt") as f:
     f.writelines([
         fr"\def\mazes{{{', '.join(f'{k}/{v}' for k, v in mazes_desc.items())}}}", "\n",
@@ -143,8 +301,7 @@ with open(folder.joinpath("summary.tex"), "wt") as f:
 
     def formatter(x): return fr"\circ{{{int(x)}}}" if x <= 4 else x
 
-    f.write(df.to_latex(escape=True, float_format="%g", na_rep="",
-                        formatters={
-                            ("Reward", gid(_g)): formatter
-                            for _g in genomes
-                        }))
+    formatters = {("Signs", s): int for s in "CTL"}
+    formatters.update({("Reward", gid(_g)): formatter for _g in genomes})
+    f.write(df.to_latex(escape=True, float_format="%.1f", na_rep="",
+                        formatters=formatters))
