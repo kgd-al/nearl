@@ -7,138 +7,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from PyQt5.QtGui import QImage
-from abrain._cpp.phenotype import CPPN
 
-from amaze import Maze, StartLocation, MazeWidget, qt_application, Sign
-from amaze.misc.resources import np_images
-from matplotlib import colors
-from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.ticker import FormatStrFormatter
-from tabulate import tabulate
-from termcolor import colored
-
+from amaze import Maze, StartLocation, MazeWidget, qt_application
+from rerun import process
 from utils import merge_trajectories
 
-from rerun import process
-
-if True:
-    import matplotlib.pyplot as plt
-
-    n = 51
-    c = np.linspace(-1, 1, n)
-
-    fns = CPPN.functions()
-    bsgm = fns["bsgm"]
-    step = fns["step"]
-    sin = fns["sin"]
-    abs = fns["abs"]
-
-    outputs = [(.5, 0), (0, .5), (-.5, 0), (0, -.5)]
-
-    plt.locator_params(nbins=5)
-
-    def plot(_fn, title):
-
-        data = [
-            [[_fn(x, y, _x1, _y1) for x in c] for y in c]
-            for _x1, _y1 in outputs
-        ]
-
-        vmin, vmax = np.quantile(data, [0, 1])
-        vabs = max(vmin, -vmin, vmax, -vmax)
-        vmin, vmax = -vabs, vabs
-
-        norm = colors.Normalize(vmin=vmin, vmax=vmax)
-
-        fig, axes = plt.subplots(2, 2, sharex="all", sharey="all")
-
-        images = []
-        for ax, data, (x1, y1) in zip(axes.flatten(), data, outputs):
-            images.append(ax.imshow(data, aspect="equal", norm=norm,
-                                    extent=(-1, 1, -1, 1), origin="lower",
-                                    cmap="bwr"))
-            ax.scatter([x1], [y1], c='k')
-
-        fig.suptitle(title)
-        fig.colorbar(images[0], ax=axes, orientation='vertical',
-                     fraction=.1)
-
-        for ax in axes[1, :]:
-            ax.set_xlabel("X")
-        for ax in axes[:, 0]:
-            ax.set_ylabel("Y")
-
-        return fig
-
-
-    def fake_weight1(_x, _y, _x1, _y1):
-        return bsgm(
-                    -step(
-                        step(
-                            abs(_x+_x1)-1.4
-                        )
-                        +
-                        step(
-                            abs(_y+_y1)-1.4
-                        )
-                        - 0.5
-                    )
-                    + 0.1 * sin(
-                        step(abs(_x) - .33)
-                        + step(abs(_y) - .33)
-                    )
-        )
-
-    def fake_weight2(_x, _y, _x1, _y1):
-        return bsgm(
-                    -step(
-                        step(
-                            abs(_x+_x1)-1.4
-                        )
-                        +
-                        step(
-                            abs(_y+_y1)-1.4
-                        )
-                        - 0.5
-                    )
-                    - 0.1 * sin(
-                        step(abs(_x) - .33)
-                        + step(abs(_y) - .33)
-                    )
-        )
-
-    def fake_leo(_x, _y, _x1, _y1):
-        return step(
-            step(
-                abs(.5*_x+_x1)
-                - .7
-            )
-            +
-            step(
-                abs(.5*_y+_y1)
-                - .7
-            )
-            - 0.5
-        )
-
-    with PdfPages("foo.pdf") as pdf:
-        pdf.savefig(plot(fake_weight1, 'Weights (full)'))
-        pdf.savefig(plot(fake_weight2, 'Weights (hollow)'))
-        pdf.savefig(plot(fake_leo, 'LEO'))
-        pdf.savefig(plot(lambda *args: fake_weight1(*args) * fake_leo(*args),
-                         'Full'))
-        pdf.savefig(plot(lambda *args: fake_weight2(*args) * fake_leo(*args),
-                         'Hollow'))
-    print("Generated plots")
-
-    # exit(42)
-
-# Seems to be working fine
-# bsgm(-step(step(abs(x+x1)-1.4)+step(abs(y+y1)-1.4)-0.5)+0.1*kgdsin(step(abs(x)-.33)+step(abs(y)-.33)))
-# bsgm(-step(step(abs(x+x1)-1.4)+step(abs(y+y1)-1.4)-0.5)-0.2*kgdsin(step(abs(x)-.33)+step(abs(y)-.33)))
-
-# Connectivity
-# step(step(abs(.5*x+x1)-.5)+step(abs(.5*y+y1)-.5)-0.5)
+# set pm3d; set hidden3d; set isosamples 50; set view equal xy;
+# gnuplot> set multiplot layout 2,4; do for [a in "-1 1"] { do for [an =0:270:90] { x1 = .5*cos(an); y1=.5*sin(an); set label 1 at x1, y1, 1.1 "" point pt 7 lc 'red' front; splot step(step(H10(x)-step(H11(y)-.45)-step(H10(-a*x)-.95)-.7)+step(H11(y)-step(H10(x)-.45)-step(H11(-a*y)-.95)-.7)-.5+step(step(H10(a*x)-.95)+step(H11(a*y)-.95))) title sprintf("a=%s, o=(%.g, %.g)", a, x1, y1); } }; unset multiplot;
 
 if False:
     import cv2
@@ -185,10 +60,14 @@ mazes_desc = {
 mazes_desc.update({
     f"{base}_C{c}-1_t.5_T{t}-1": l
     for c, t, l in [
-        ("arrow", "warning", "Attractive full"),
-        ("warning", "arrow", "Repulsive full"),
-        ("rarrow", "alien", "Attractive hollow"),
-        ("alien", "rarrow", "Repulsive hollow")
+        # ("arrow", "warning", "Attractive full"),
+        # ("warning", "arrow", "Repulsive full"),
+        # ("rarrow", "alien", "Attractive hollow"),
+        # ("alien", "rarrow", "Repulsive hollow"),
+        ("arrow", "rarrow", "Attractive full"),
+        ("rarrow", "arrow", "Attractive hollow"),
+        ("warning", "alien", "Repulsive full"),
+        ("alien", "warning", "Repulsive hollow")
     ]
 })
 mazes_desc = {
@@ -232,9 +111,10 @@ except:
                       index=pd.MultiIndex.from_product(
                           [[], []], names=["Genome", "Maze"]))
 
-# df.drop("P_A", inplace=True)
-# df.drop("MLP", inplace=True)
-# print("Refreshing MLP performance")
+for refresh in ["AF", "AH", "RF", "RH"]:
+    if refresh in df.index:
+        df.drop(refresh, inplace=True)
+        print(f"Refreshing {refresh} performance")
 
 
 def gid(_genome): return _genome.stem

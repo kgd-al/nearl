@@ -27,14 +27,15 @@ def pretty_print(something):
 
 def plot_cppn(base, genome: Genome, resolution: int):
     cppn = CPPN3D(genome)
-    print(cppn)
 
     n = 51
     c = np.linspace(-1, 1, n)
 
+    inputs = np.meshgrid(*[np.linspace(-1, 1, resolution) for _ in range(2)])
+    inputs = inputs[0].flatten(), inputs[1].flatten()
     outputs = [(.5, 0), (0, .5), (-.5, 0), (0, -.5)]
 
-    plt.locator_params(nbins=5)
+    # plt.locator_params(nbins=5)
 
     def plot(_pdf, _fn, title):
         data = [
@@ -56,6 +57,7 @@ def plot_cppn(base, genome: Genome, resolution: int):
                                     extent=(-1, 1, -1, 1), origin="lower",
                                     cmap="bwr"))
             ax.scatter([x1], [y1], c='k')
+            ax.scatter(*inputs, marker='D', edgecolor='k', linewidths=.2, c='w', s=1, clip_on=False)
 
         fig.suptitle(title)
         fig.colorbar(images[0], ax=axes, orientation='vertical',
@@ -75,16 +77,18 @@ def plot_cppn(base, genome: Genome, resolution: int):
     def weights(*args): return call(*args, ESHNOutputs.Weight)
     def leo(*args): return call(*args, ESHNOutputs.LEO)
 
-    with PdfPages(base.joinpath("cppn.pdf")) as pdf:
+    output = base.with_suffix(".cppn.pdf")
+    with PdfPages(output) as pdf:
         plot(pdf, weights, 'Weights')
         plot(pdf, leo, 'LEO')
         plot(pdf, lambda *args: weights(*args) * leo(*args), 'Connections')
-    print("Generated plots")
+    print("Generated", output)
 
 
 def process(path: Path, mazes: List[Maze], options: argparse.Namespace):
     folder = options.folder or path.parent
     base = folder.joinpath(path.stem)
+    base.mkdir(exist_ok=True, parents=True)
 
     if len(mazes) == 0 and not options.plot_cppn:
         return base, None
@@ -99,9 +103,6 @@ def process(path: Path, mazes: List[Maze], options: argparse.Namespace):
     genome, robot = load(path)
     plot_cppn(base, genome, robot.vision)
 
-    if len(mazes) == 0:
-        return base, None
-
     if options.render is not None:
         genome_dot = base.with_suffix(options.render)
         genome_dot = genome.to_dot(genome_data, genome_dot)
@@ -111,13 +112,14 @@ def process(path: Path, mazes: List[Maze], options: argparse.Namespace):
         genome_math = genome.to_math(genome_data, base, extension=options.math)
         print(path, "equation system written to", genome_math)
 
+    if len(mazes) == 0:
+        return base, None
+
     simulate = options.monitor or options.trajectory
     trajectories = []
 
     rewards = None
     if simulate:
-        base.mkdir(exist_ok=True, parents=True)
-
         controller = Brain(genome, robot, labels=True)
         data = controller_data(controller)
 
@@ -189,7 +191,7 @@ def main():
                              "provided genomes' parent directory)")
     parser.add_argument("--retina", type=int, default=7,
                         help="Robot's retina size")
-    parser.add_argument("--plot-cppn", type=bool,
+    parser.add_argument("--plot-cppn",
                         action='store_true', default=False,
                         help="Also generate visuals of the CPPN patterns")
     options = parser.parse_args()
