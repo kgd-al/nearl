@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-
+import json
+from os.path import getmtime
+from time import time
 from argparse import Namespace
 from collections import defaultdict
 from pathlib import Path
@@ -12,8 +14,8 @@ from amaze import Maze, StartLocation, MazeWidget, qt_application
 from rerun import process
 from utils import merge_trajectories
 
-# set pm3d; set hidden3d; set isosamples 50; set view equal xy;
-# gnuplot> set multiplot layout 2,4; do for [a in "-1 1"] { do for [an =0:270:90] { x1 = .5*cos(an); y1=.5*sin(an); set label 1 at x1, y1, 1.1 "" point pt 7 lc 'red' front; splot step(step(H10(x)-step(H11(y)-.45)-step(H10(-a*x)-.95)-.7)+step(H11(y)-step(H10(x)-.45)-step(H11(-a*y)-.95)-.7)-.5+step(step(H10(a*x)-.95)+step(H11(a*y)-.95))) title sprintf("a=%s, o=(%.g, %.g)", a, x1, y1); } }; unset multiplot;
+# step(x) = x <= 0 ? 0 : 1; H10(x) = abs(.5*x+x1); H11(y) = abs(.5*y+y1); set pm3d; set hidden3d; set isosamples 50; set view equal xy; set view 0,0;  set xrange[-1:1]; set yrange [-1:1]; set angle degree
+# set multiplot layout 2,4; do for [a in "1 -1"] { do for [an =0:270:90] { x1 = .5*cos(an); y1=.5*sin(an); set label 1 at x1, y1, 1.1 "" point pt 7 lc 'red' front; splot step(step(H10(a*x)-step(H11(y)-.45)-step(H10(a*x)-.95)-.7)+step(H11(a*y)-step(H10(x)-.45)-step(H11(a*y)-.95)-.7)+step(step(H10(x)-.95)+step(H11(y)-.95)-step(step(H10(x)-.45)+step(H11(y)-.45)-1))-.5) title sprintf("a=%s, o=(%g, %g)", a, x1, y1); } }; unset multiplot;
 
 if False:
     import cv2
@@ -53,10 +55,15 @@ base = "M8_6x6"
 
 mazes_desc = {
     f"{base}_U": "Trivial",
-    f"{base}_U_l0.25_L1": "Trivial (attractive lures)",
-    f"{base}_U_l0.25_Lwarning-1": "Trivial (repulsive lures)",
-    f"{base}_U_l0.25_Lwarning-.5": "Trivial (repulsive gray lures)",
 }
+mazes_desc.update({
+    f"{base}_U_l0.25_Lstar-{v}": f"Trivial ({v} lures)"
+    for v in [.25, .5, 1]
+})
+mazes_desc.update({
+    f"{base}_U_l0.25_L{s}-1": f"Trivial ({s} lures)"
+    for s in ["arrow", "warning", "rarrow", "alien"]
+})
 mazes_desc.update({
     f"{base}_C{c}-1_t.5_T{t}-1": l
     for c, t, l in [
@@ -111,14 +118,33 @@ except:
                       index=pd.MultiIndex.from_product(
                           [[], []], names=["Genome", "Maze"]))
 
-for refresh in ["AF", "AH", "RF", "RH"]:
-    if refresh in df.index:
-        df.drop(refresh, inplace=True)
-        print(f"Refreshing {refresh} performance")
-
 
 def gid(_genome): return _genome.stem
 
+
+with open(folder.joinpath("cache.json"), "a+") as cj:
+    cj.seek(0)
+    try:
+        mtime_cache = json.load(cj)
+    except Exception as e:
+        mtime_cache = {}
+
+    current_time = time()
+
+    for genome in genomes:
+        _gid = gid(genome)
+        last_modif = getmtime(genome)
+        last_eval = mtime_cache.get(_gid, 0)
+        print(genome, last_modif, last_eval)
+
+        if last_eval < last_modif and _gid in df.index:
+            df.drop(_gid, inplace=True)
+            print(f"Refreshing {_gid} performance")
+            mtime_cache[_gid] = current_time
+
+    cj.seek(0)
+    cj.truncate()
+    json.dump(mtime_cache, cj)
 
 for genome in genomes:
     _gid = gid(genome)
@@ -179,9 +205,12 @@ with open(folder.joinpath("summary.tex"), "wt") as f:
         r"}", "\n"
     ])
 
-    def formatter(x): return fr"\circ{{{int(x)}}}" if x <= 4 else x
+    def formatter(x): return fr"\circ{{{int(x)}}}" if x <= 4 else f"{x:.3g}"
 
     formatters = {("Signs", s): int for s in "CTL"}
     formatters.update({("Reward", gid(_g)): formatter for _g in genomes})
-    f.write(df.to_latex(escape=True, float_format="%.1f", na_rep="",
-                        formatters=formatters))
+    rows = df.to_latex(escape=True, float_format="%.1f", na_rep="",
+                       formatters=formatters).split("\n")
+    rows.insert(-8, r"\midrule")
+    rows.insert(-4, r"\midrule")
+    f.write("\n".join(rows) + "\n")

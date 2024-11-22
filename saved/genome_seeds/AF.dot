@@ -1,4 +1,8 @@
-CPPN { // Solves C1 mazes (for a resolution of 7 -> Resolution input to the CPPN?)
+CPPN {
+    // Attractive full genome. Follows information at:
+    // - the center (see H10)
+    // - the same hemisphere (see H21 & H22)
+
     x0; y0; z0; x1; y1; z1; l; b;
 
     W [bsgm];
@@ -50,30 +54,101 @@ CPPN { // Solves C1 mazes (for a resolution of 7 -> Resolution input to the CPPN
     6 -> 9 [1];
     8 -> 9 [1];
 
-    // W = bsgm(-H4+0.1*H9)
-    4 -> W [-1];
-    9 -> W [.05];
+    // H10 = step(H9+.5)
+    10 [step];
+    9 -> 10 [1];    // Looking at center (-1 to look at edges)
+    b -> 10 [.5];
+
+    // W = bsgm(-.75*H4+0.1*H10)
+    4 -> W [-.75];
+    10 -> W [.15];
 
     // ----
+    // LEO
 
-    // step(abs(.5x0+x1)-.7)
-    10 [abs];
-    11 [step];
-    x0 -> 10 [.5];
-    x1 -> 10 [1];
-    10 -> 11 [1];
-    b -> 11 [-.7];
+    // H11 = abs(.5x0+x1)
+    11 [abs];
+    x0 -> 11 [.5];
+    x1 -> 11 [1];
 
-    // step(abs(.5z0+z1)-.7)
+    // H12 = abs(.5z0+z1)
     12 [abs];
-    13 [step];
     z0 -> 12 [.5];
     z1 -> 12 [1];
-    12 -> 13 [1];
-    b -> 13 [-.7];
 
-    // L = step(H11+H13-1.1l)
-    11 -> L [1];
-    13 -> L [1];
-    l -> L [-1.275];
+    // H13 = abs(-.5x0+x1)
+    13 [abs];
+    x0 -> 13 [-.5];
+    x1 -> 13 [1];
+
+    // H14 = abs(-.5z0+z1)
+    14 [abs];
+    z0 -> 14 [-.5];
+    z1 -> 14 [1];
+
+    // --
+
+    // H15 = step(H11-.45)
+    15 [step];
+    11 -> 15 [1];
+    b -> 15 [-.45];
+
+    // H16 = step(H12-.45)
+    16 [step];
+    12 -> 16 [1];
+    b -> 16 [-.45];
+
+    // H17 = step(H11-.95)
+    17 [step];
+    11 -> 17 [1];
+    b -> 17 [-.95];
+
+    // H18 = step(H12-.95)
+    18 [step];
+    12 -> 18 [1];
+    b -> 18 [-.95];
+
+    // H19 = step(H13-.95)
+    19 [step];
+    13 -> 19 [1];
+    b -> 19 [-.95];
+
+    // H20 = step(H14-.95)
+    20 [step];
+    14 -> 20 [1];
+    b -> 20 [-.95];
+
+    // --
+
+    // H21 = step(H13-H16-H19-.7)
+    21 [step];
+    11 -> 21 [1];   // X-attractive (13 for repulsive)
+    16 -> 21 [-1];
+    19 -> 21 [-1];
+    b -> 21 [-.7];
+
+    // H22 = step(H14-H15-H20-.7)
+    22 [step];
+    12 -> 22 [1];   // Y-attractive (12 for repulsive)
+    15 -> 22 [-1];
+    20 -> 22 [-1];
+    b -> 22 [-.7];
+
+    // H23 = step(H15+H16-1)
+    23 [step];
+    15 -> 23 [1];
+    16 -> 23 [1];
+    b -> 23 [-1];
+
+    // H24 = step(H17+H18-H23)
+    24 [step];
+    17 -> 24 [1];
+    18 -> 24 [1];
+    23 -> 24 [-1];
+
+    // L = step(H21+H22+H24-.5)
+    21 -> L [1];
+    22 -> L [1];
+    24 -> L [1];
+    b -> L [-.5];
 }
