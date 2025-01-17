@@ -1,6 +1,7 @@
 .idea/
 tmp/
 resources/
+overleaf/
 stash
 
 # Byte-compiled / optimized / DLL files

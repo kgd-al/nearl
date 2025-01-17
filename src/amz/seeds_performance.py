@@ -12,7 +12,7 @@ from amaze import Maze, StartLocation, MazeWidget, qt_application
 from rerun import process
 from utils import merge_trajectories
 
-# set pm3d; set hidden3d; set isosamples 50; set view equal xy;
+# set pm3d; set hidden3d; set isosamples 50; set view equal xy; set xrange [-1:1]; set yrange [-1:1];
 # gnuplot> set multiplot layout 2,4; do for [a in "-1 1"] { do for [an =0:270:90] { x1 = .5*cos(an); y1=.5*sin(an); set label 1 at x1, y1, 1.1 "" point pt 7 lc 'red' front; splot step(step(H10(x)-step(H11(y)-.45)-step(H10(-a*x)-.95)-.7)+step(H11(y)-step(H10(x)-.45)-step(H11(-a*y)-.95)-.7)-.5+step(step(H10(a*x)-.95)+step(H11(a*y)-.95))) title sprintf("a=%s, o=(%.g, %.g)", a, x1, y1); } }; unset multiplot;
 
 if False:
