@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-
+import json
+from os.path import getmtime
+from time import time
 from argparse import Namespace
 from collections import defaultdict
 from pathlib import Path
@@ -53,10 +55,15 @@ base = "M8_6x6"
 
 mazes_desc = {
     f"{base}_U": "Trivial",
-    f"{base}_U_l0.25_L1": "Trivial (attractive lures)",
-    f"{base}_U_l0.25_Lwarning-1": "Trivial (repulsive lures)",
-    f"{base}_U_l0.25_Lwarning-.5": "Trivial (repulsive gray lures)",
 }
+mazes_desc.update({
+    f"{base}_U_l0.25_Lstar-{v}": f"Trivial ({v} lures)"
+    for v in [.25, .5, 1]
+})
+mazes_desc.update({
+    f"{base}_U_l0.25_L{s}-1": f"Trivial ({s} lures)"
+    for s in ["arrow", "warning", "rarrow", "alien"]
+})
 mazes_desc.update({
     f"{base}_C{c}-1_t.5_T{t}-1": l
     for c, t, l in [
@@ -111,14 +118,33 @@ except:
                       index=pd.MultiIndex.from_product(
                           [[], []], names=["Genome", "Maze"]))
 
-for refresh in ["AF", "AH", "RF", "RH"]:
-    if refresh in df.index:
-        df.drop(refresh, inplace=True)
-        print(f"Refreshing {refresh} performance")
-
 
 def gid(_genome): return _genome.stem
 
+
+with open(folder.joinpath("cache.json"), "a+") as cj:
+    cj.seek(0)
+    try:
+        mtime_cache = json.load(cj)
+    except Exception as e:
+        mtime_cache = {}
+
+    current_time = time()
+
+    for genome in genomes:
+        _gid = gid(genome)
+        last_modif = getmtime(genome)
+        last_eval = mtime_cache.get(_gid, 0)
+        print(genome, last_modif, last_eval)
+
+        if last_eval < last_modif and _gid in df.index:
+            df.drop(_gid, inplace=True)
+            print(f"Refreshing {_gid} performance")
+            mtime_cache[_gid] = current_time
+
+    cj.seek(0)
+    cj.truncate()
+    json.dump(mtime_cache, cj)
 
 for genome in genomes:
     _gid = gid(genome)
@@ -179,9 +205,12 @@ with open(folder.joinpath("summary.tex"), "wt") as f:
         r"}", "\n"
     ])
 
-    def formatter(x): return fr"\circ{{{int(x)}}}" if x <= 4 else x
+    def formatter(x): return fr"\circ{{{int(x)}}}" if x <= 4 else f"{x:.3g}"
 
     formatters = {("Signs", s): int for s in "CTL"}
     formatters.update({("Reward", gid(_g)): formatter for _g in genomes})
-    f.write(df.to_latex(escape=True, float_format="%.1f", na_rep="",
-                        formatters=formatters))
+    rows = df.to_latex(escape=True, float_format="%.1f", na_rep="",
+                       formatters=formatters).split("\n")
+    rows.insert(-8, r"\midrule")
+    rows.insert(-4, r"\midrule")
+    f.write("\n".join(rows) + "\n")

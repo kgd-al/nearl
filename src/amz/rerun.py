@@ -90,7 +90,7 @@ def process(path: Path, mazes: List[Maze], options: argparse.Namespace):
     base = folder.joinpath(path.stem)
     base.mkdir(exist_ok=True, parents=True)
 
-    if len(mazes) == 0 and not options.plot_cppn:
+    if len(mazes) == 0:
         return base, None
 
     if path.suffix == ".dot":
@@ -111,9 +111,6 @@ def process(path: Path, mazes: List[Maze], options: argparse.Namespace):
     if options.math is not None:
         genome_math = genome.to_math(genome_data, base, extension=options.math)
         print(path, "equation system written to", genome_math)
-
-    if len(mazes) == 0:
-        return base, None
 
     simulate = options.monitor or options.trajectory
     trajectories = []
