@@ -15,7 +15,7 @@ from typing import Callable, Any, Optional
 from amaze import MazeWidget, Simulation, Maze, Robot
 
 from abrain import Genome
-from abrain.neat.evolver import NEATEvolver as Evolver, NEATConfig as Config
+from abrain.neat.evolver import Evolver as Evolver, Config as Config
 from brain import Brain, create_genome_data, controller_data, save
 from utils import merge_trajectories
 
